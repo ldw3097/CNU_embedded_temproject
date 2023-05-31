@@ -145,9 +145,8 @@ int direction = 0;
 
 // 왼쪽으로 90도 도는 함수
 void turnLeft() {
-  int i;
   Motor_Stop();
-  osDelay(300); 
+  osDelay(300);
 
   motorInterrupt1 = 1;  // 바퀴 회전 값 초기화
   Motor_Left();
@@ -155,49 +154,41 @@ void turnLeft() {
   while (motorInterrupt1 < 900) {
     osDelay(1 / portTICK_RATE_MS);  // motorInterrupt1 값을 읽어오기 위한 딜레이
   }
-
   Motor_Stop();
   osDelay(300);
   direction--;
 }
 // 오른쪽으로 90도 도는 함수
 void turnRight() {
-  int i;
-
   Motor_Stop();
   osDelay(300);
 
   motorInterrupt2 = 1;
   Motor_Right();
 
-  while (motorInterrupt2 < 960) {
+  while (motorInterrupt2 < 1050) {
     osDelay(1 / portTICK_RATE_MS);
   }
-
   Motor_Stop();
   osDelay(300);
   direction++;
 }
 
 void turnLeftLittle() {
-  int i;
-
   Motor_Stop();
   osDelay(30);
 
   motorInterrupt1 = 1;
   Motor_Left();
-  // 24도 회전
-  while (motorInterrupt1 < 240) {
+  // 20도 회전
+  while (motorInterrupt1 < 205) {
     osDelay(1 / portTICK_RATE_MS);
   }
-
   Motor_Stop();
   osDelay(30);
 }
 
 void turnRightLittle() {
-  int i;
   // uBrain마다 다를 수 있으므로 각도는 각자 수정
 
   Motor_Stop();
@@ -205,68 +196,72 @@ void turnRightLittle() {
 
   motorInterrupt2 = 1;
   Motor_Right();
-  while (motorInterrupt2 < 240) {
+  while (motorInterrupt2 < 210) {
     osDelay(1 / portTICK_RATE_MS);
   }
-
   Motor_Stop();
   osDelay(30);
 }
 
 /*********************************  task ************************************/
+// 앞에 벽이 있으면 1, 없으면 0
 uint32_t frontBlock = 0;
-uint32_t forward = 0;
-
-
 // 왼쪽 공간이 더 넓으면 0, 오른쪽이 더 넓으면 1
 int directTo = 0;
-// 왼쪽으로 조금 틀어야하면 -1, 오른쪽으로 틀어야하면 1
+// 적외선의 왼쪽에 벽이 있으면 1, 오른쪽에 있으면 -1
 int moveLittle = 0;
+// 왼쪽 초음파에 벽이 있으면 1, 오른쪽에 있으면 -1
+int uwMoveLittle = 0;
 
-int space = 0;
-
-// 앞이 막혔는지, 대각선 방향에 물체가 너무 가까이 있는지 체크후 나아갈 방향 지시
+// 앞이 막혔는지, 대각선에 물체가 너무 가까이 있는지 체크후 나아갈 방향 지시
 void Detect_obstacle() {
   osDelay(200);  // 태스크 만든 후 약간의 딜레이
   printf("\r\n Detect_obstacle");
 
   for (;;) {
     // 초음파 센서로 앞이 막혔는지 보는 부분
-    if (uwDiffCapture2 / 58 > 0 && uwDiffCapture2 / 58 < 10) {
+    if (uwDiffCapture2 / 58 > 0 && uwDiffCapture2 / 58 < 14) {
       frontBlock = 1;
       // 좌우 공간 비교해서 되도록 더 넓은곳으로 가도록 함
       directTo = uwDiffCapture1 > uwDiffCapture3;
     } else {
       frontBlock = 0;
     }
+    if (uwDiffCapture1 / 58 > 0 && uwDiffCapture1 / 58 < 2) {
+      uwMoveLittle = 1;
+    } else if (uwDiffCapture3 / 58 > 0 && uwDiffCapture3 / 58 < 2) {
+      uwMoveLittle = -1;
+    } else {
+      uwMoveLittle = 0;
+    }
 
     // 적외선 센서로 벽 스치는것 방지
     HAL_ADC_Start(&AdcHandle1);
     uhADCxLeft = HAL_ADC_GetValue(&AdcHandle1);
     HAL_ADC_PollForConversion(&AdcHandle1, 0xFF);
-    
+
     HAL_ADC_Start(&AdcHandle2);
     uhADCxRight = HAL_ADC_GetValue(&AdcHandle2);
     HAL_ADC_PollForConversion(&AdcHandle2, 0xFF);
 
-    if (uhADCxLeft < 1300 && uhADCxRight < 1300){
+    if (uhADCxLeft < 1090 && uhADCxRight < 1090) {
       // 적외선이 둘다 벽과 가깝지 않은 경우
       moveLittle = 0;
-    }else if (uhADCxLeft > uhADCxRight){
+    } else if (uhADCxLeft > uhADCxRight) {
       // 적외선이 왼쪽이 더 가까운경우 오른쪽으로 조금 틀기
       moveLittle = 1;
-    }else{
+    } else {
       moveLittle = -1;
     }
+
     taskYIELD();
   }
 }
 
 void Motor_control() {
   osDelay(200);  // 태스크 만든 후 약간의 딜레이
-  taskYIELD(); 
+  taskYIELD();
   Motor_Forward();
-
   for (;;) {
     // 앞에 벽이 있으면 90도 도는것을 우선적으로 실행
     if (frontBlock == 1) {
@@ -285,41 +280,31 @@ void Motor_control() {
         }
       }
       taskYIELD();
-    }else if(moveLittle == -1){
+			continue;
+    } else if (moveLittle == -1) {
       // 왼쪽으로 조금 돌아야 할때
       turnLeftLittle();
       taskYIELD();
-    }else if(moveLittle == 1){
+			continue;
+    } else if (moveLittle == 1) {
       turnRightLittle();
       taskYIELD();
-    }else {
+			continue;
+    } else if (uwMoveLittle == 1) {
+      turnLeftLittle();
+      taskYIELD();
+			continue;
+    } else if (uwMoveLittle == -1) {
+      // 왼쪽으로 조금 돌아야 할때
+      turnRightLittle();
+      taskYIELD();
+			continue;
+    } else {
       Motor_Forward();
     }
   }
 }
 
-/*적외선 태스크 부분 - 나중에 사용(선택) */
-void IR_Sensor() {
-  for (;;) {
-    HAL_ADC_Start(&AdcHandle1);
-    uhADCxLeft = HAL_ADC_GetValue(&AdcHandle1);
-    HAL_ADC_PollForConversion(&AdcHandle1, 0xFF);
-    if (uhADCxLeft > 2000)
-      fl = 1;
-    else
-      fr = 0;
-
-    HAL_ADC_Start(&AdcHandle2);
-    uhADCxRight = HAL_ADC_GetValue(&AdcHandle2);
-    HAL_ADC_PollForConversion(&AdcHandle2, 0xFF);
-    if (uhADCxRight > 2000)
-      fr = 1;
-    else
-      fr = 0;
-
-    osDelay(10);
-  }
-}
 
 /***************************************************************************/
 int main(void) {
